@@ -81,6 +81,29 @@ export async function startFakeCourier(): Promise<{ app: FastifyInstance; url: s
     return { data: { trackingEvent: (state.trackingEvents[code] ?? []).map((e) => ({ trackingEventStatus: e.status, trackingEventDate: e.time, trackingEventLocation: e.location ?? '' })) }, error: null };
   });
 
+  // ---- Royal Mail Pro Shipping (v3 REST) flavour ----
+  app.addHook('onRequest', async (req, reply) => {
+    if (!req.url.startsWith('/rmpro/')) return;
+    if (req.headers['x-ibm-client-id'] !== 'rm-client' || req.headers['x-ibm-client-secret'] !== 'rm-secret') return reply.status(401).send({ message: 'bad client' });
+    if (req.url.startsWith('/rmpro/token')) return;
+    if (req.headers['x-rmg-auth-token'] !== 'rm-token-1') return reply.status(401).send({ message: 'bad token' });
+  });
+  app.post('/rmpro/token', async (req, reply) => {
+    if (req.headers['x-rmg-security-username'] !== 'rmuser' || req.headers['x-rmg-security-password'] !== 'rmpass') return reply.status(401).send({ message: 'bad user' });
+    state.logins++;
+    return { token: 'rm-token-1' };
+  });
+  app.get('/rmpro/addresses', async () => ({ addresses: [] }));
+  app.post('/rmpro/shipments', async (req) => {
+    const id = String(++seq);
+    state.created.push({ id, body: req.body, flavour: 'rmpro' });
+    const body = req.body as { shipmentInformation: { packages?: unknown[] } };
+    const n = body.shipmentInformation.packages?.length ?? 1;
+    return { packages: Array.from({ length: n }, (_, i) => ({ packageOccurance: i + 1, uniqueId: `${id}${i + 1}`, trackingNumber: `RM${id}${i + 1}GB`, trackingUrl: `https://track.test/RM${id}${i + 1}GB`, carrierCode: 'RMG' })), labelImageFormat: 'PDF', labelImages: await labelPdf(id), httpStatusCode: 200, message: 'Success' };
+  });
+  app.put('/rmpro/shipments/:id/printLabel', async (req) => { state.labelFetches++; return { shipmentId: (req.params as { id: string }).id, labelImage: await labelPdf((req.params as { id: string }).id), labelImageFormat: 'PDF' }; });
+  app.put('/rmpro/shipments/cancel', async (req) => { for (const c of req.body as { shipmentId: string }[]) state.voided.push(c.shipmentId); return { httpStatusCode: 200, message: 'Success' }; });
+
   // A webhook receiver for Smooth Parcel's own outbound webhooks.
   app.post('/hooks', async (req) => { state.webhooks.push({ headers: req.headers as Record<string, unknown>, body: req.body }); return { ok: true }; });
 

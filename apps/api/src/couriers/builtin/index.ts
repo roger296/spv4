@@ -10,6 +10,7 @@ import { courierProfiles, type CredentialField, type ServiceDefinition } from '.
 import { parseDefinition, type ProfileDefinitionInput } from '../profile-schema.js';
 import { royalMailClickAndDrop } from './royal-mail-click-and-drop.js';
 import { dpdUk } from './dpd-uk.js';
+import { royalMailProShipping } from './royal-mail-pro-shipping.js';
 
 export interface BuiltinProfile {
   key: string;
@@ -19,7 +20,7 @@ export interface BuiltinProfile {
   definition: ProfileDefinitionInput;
 }
 
-export const BUILTIN_PROFILES: BuiltinProfile[] = [royalMailClickAndDrop, dpdUk];
+export const BUILTIN_PROFILES: BuiltinProfile[] = [royalMailClickAndDrop, royalMailProShipping, dpdUk];
 
 export async function seedBuiltinProfiles(): Promise<void> {
   const db = getDb();

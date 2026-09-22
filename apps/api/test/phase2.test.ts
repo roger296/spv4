@@ -71,6 +71,39 @@ describe('courier profiles and accounts', () => {
   });
 });
 
+describe('Royal Mail Pro Shipping (v3 REST) profile', () => {
+  it('logs in with the IBM client headers, creates and voids a shipment', async () => {
+    const pro = BUILTIN_PROFILES.find((p) => p.key === 'royal-mail-pro-shipping')!;
+    const prof = await app.inject({ method: 'POST', url: '/v4/courier-profiles', headers: H(), payload: { name: 'Fake RM Pro', definition: { ...pro.definition, baseUrl: `${fake.url}/rmpro` }, credentialSchema: pro.credentialSchema, services: pro.services } });
+    expect(prof.statusCode).toBe(201);
+    const ca = await app.inject({ method: 'POST', url: '/v4/courier-accounts', headers: H(), payload: { profileId: prof.json().id, name: 'Royal Mail Pro', credentials: { clientId: 'rm-client', clientSecret: 'rm-secret', username: 'rmuser', password: 'rmpass', postingLocation: '1234567890' } } });
+    expect(ca.statusCode).toBe(201);
+    const logins = fake.state.logins;
+    const t = await app.inject({ method: 'POST', url: `/v4/courier-accounts/${ca.json().id}/test`, headers: H(), payload: { operation: 'auth_test' } });
+    expect(t.json().ok).toBe(true);
+    expect(fake.state.logins).toBe(logins + 1);
+    const m = await app.inject({ method: 'POST', url: '/v4/methods', headers: H(), payload: { courierAccountId: ca.json().id, name: 'RM Pro Tracked 24', serviceCode: 'TPN', destinationCountries: ['GB'], maxTransitDays: 1, bands: [{ minWeightKg: 0, maxWeightKg: 20, cost: 2.9 }] } });
+    expect(m.statusCode).toBe(201);
+    const res = await app.inject({ method: 'POST', url: '/v4/orders', headers: H(), payload: { reference: 'PRO-1', deliveryAddress: ukAddress, parcels: [{ weight: 0.9, length: 20, width: 15, height: 10 }], method: 'RM Pro Tracked 24' } });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().courierName).toBe('Royal Mail Pro');
+    expect(res.json().trackingNumber).toMatch(/^RM\d+GB$/);
+    expect(res.json().trackingLink).toBe(res.json().shipments[0].trackingUrl);
+    expect(fake.state.logins).toBe(logins + 1); // token reused
+    const sent = fake.state.created.at(-1)?.body as { shipper: { shipperReference: string; postcode: string }; destination: { postcode: string; countryCode: string }; shipmentInformation: { serviceCode: string; totalPackages: number; totalWeight: number; packages: { packageOccurrence: number; weight: number }[]; serviceOptions: { postingLocation: string } } };
+    expect(sent.shipper.shipperReference).toBe('PRO-1');
+    expect(sent.shipper.postcode).toBe('SK9 6BH');
+    expect(sent.destination).toMatchObject({ postcode: 'M1 1AA', countryCode: 'GB' });
+    expect(sent.shipmentInformation).toMatchObject({ serviceCode: 'TPN', totalPackages: 1, totalWeight: 0.9 });
+    expect(sent.shipmentInformation.packages[0]).toMatchObject({ packageOccurrence: 1, weight: 0.9 });
+    expect(sent.shipmentInformation.serviceOptions.postingLocation).toBe('1234567890');
+    const cancel = await app.inject({ method: 'POST', url: '/v4/orders/PRO-1/cancel', headers: H() });
+    expect(cancel.json().status).toBe('CANCELLED');
+    expect(fake.state.voided.at(-1)).toBe(res.json().shipments[0].courierReference);
+    await app.inject({ method: 'PATCH', url: `/v4/courier-accounts/${ca.json().id}`, headers: H(), payload: { active: false } });
+  });
+});
+
 describe('shipping methods', () => {
   it('creates methods from services and sets append-only bands', async () => {
     const fs = await app.inject({ method: 'POST', url: '/v4/methods/from-services', headers: H(), payload: { courierAccountId: cdAccountId, serviceCodes: ['TPS', 'TPN'] } });
@@ -144,21 +177,23 @@ describe('labels', () => {
   });
 
   it('re-labels with another method, voiding the first shipment', async () => {
+    const voidedBefore = fake.state.voided.length;
     const res = await app.inject({ method: 'POST', url: '/v4/orders/L-1/relabel', headers: H(), payload: { method: 'DPD Next Day' } });
     expect(res.statusCode).toBe(200);
     expect(res.json().courierName).toBe('DPD');
     expect(res.json().shipments).toHaveLength(2);
     expect(res.json().shipments.find((s: { attempt: number }) => s.attempt === 1).status).toBe('VOID');
-    expect(fake.state.voided).toHaveLength(1);
+    expect(fake.state.voided).toHaveLength(voidedBefore + 1);
     expect(fake.state.labelFetches).toBeGreaterThan(0); // DPD label fetched by a second call
     const hist = await app.inject({ method: 'GET', url: '/v4/orders/L-1/history', headers: H() });
     expect(hist.json().map((h: { action: string }) => h.action)).toContain('shipment.voided');
   });
 
   it('cancelling a labelled order voids it', async () => {
+    const voidedBefore = fake.state.voided.length;
     const res = await app.inject({ method: 'POST', url: '/v4/orders/L-1/cancel', headers: H() });
     expect(res.json().status).toBe('CANCELLED');
-    expect(fake.state.voided).toHaveLength(2);
+    expect(fake.state.voided).toHaveLength(voidedBefore + 1);
   });
 
   it('records a courier rejection as a problem the caller can read', async () => {
