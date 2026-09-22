@@ -80,10 +80,12 @@ describe('orders', () => {
   it('becomes NEW once the product is completed and the order is re-checked', async () => {
     await app.inject({ method: 'PUT', url: '/v4/products/NEW-SKU', headers: auth(acct.token), payload: { weight: 0.3, length: 10, width: 10, height: 5 } });
     const res = await app.inject({ method: 'POST', url: '/v4/orders/CO-1/label', headers: auth(acct.token) });
-    // No courier is configured yet in phase 1, so the pipeline is unavailable: 409, but the order passed pre-flight.
-    expect(res.statusCode).toBe(409);
+    // Pre-flight passes, but this account has no shipping methods: no_method, and the order says why.
+    expect(res.statusCode).toBe(422);
+    expect(res.json().status).toBe('no_method');
     const got = await app.inject({ method: 'GET', url: '/v4/orders/CO-1', headers: auth(acct.token) });
-    expect(got.json().status).toBe('NEW');
+    expect(got.json().status).toBe('PROBLEM');
+    expect(got.json().problemReason).toBe('no_method');
   });
   it('is idempotent on reference', async () => {
     const res = await app.inject({ method: 'POST', url: '/v4/orders', headers: auth(acct.token), payload: { reference: 'CO-1', deliveryAddress: ukAddress, label: false } });
@@ -118,6 +120,7 @@ describe('orders', () => {
   it('shows problem orders first, and searches ignoring spaces and dashes', async () => {
     const list = await app.inject({ method: 'GET', url: '/v4/orders', headers: auth(acct.token) });
     expect(list.json().items[0].status).toBe('PROBLEM');
+    expect(list.json().items.every((o: { status: string }, i: number, a: { status: string }[]) => i === 0 || a[i - 1]!.status !== 'NEW' || o.status !== 'PROBLEM')).toBe(true);
     const found = await app.inject({ method: 'GET', url: '/v4/orders?q=co2', headers: auth(acct.token) });
     expect(found.json().items.map((o: { orderNumber: string }) => o.orderNumber)).toContain('CO-2');
   });

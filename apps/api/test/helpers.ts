@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
+import '../src/modules/register.js';
 import { getDb } from '../src/config/database.js';
 import { warehouses } from '../src/db/schema/index.js';
 import { eq } from 'drizzle-orm';

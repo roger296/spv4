@@ -1,0 +1,165 @@
+/**
+ * Built-in profile: Royal Mail Click & Drop (api.parcel.royalmail.com).
+ * Written from Royal Mail's public API documentation (September 2026). The builder's Test step
+ * must pass on a real account before live use; field names to double-check are marked VERIFY.
+ */
+import type { BuiltinProfile } from './index.js';
+
+export const royalMailClickAndDrop: BuiltinProfile = {
+  key: 'royal-mail-click-and-drop',
+  name: 'Royal Mail (Click & Drop)',
+  credentialSchema: [
+    { key: 'apiKey', label: 'Click & Drop API key', secret: true, required: true, help: 'Click & Drop → Settings → Integrations → Click & Drop API → Authorisation key' },
+    { key: 'trackingClientId', label: 'Tracking API client id (optional)', secret: false, help: 'Only if you have Royal Mail Tracking API access; leaves tracking to the public page otherwise' },
+    { key: 'trackingClientSecret', label: 'Tracking API client secret (optional)', secret: true },
+  ],
+  services: [
+    { code: 'TPN', name: 'Tracked 24', tracked: true, maxTransitDays: 1, domestic: true, limits: { maxWeightKg: 20 } },
+    { code: 'TPS', name: 'Tracked 48', tracked: true, maxTransitDays: 2, domestic: true, limits: { maxWeightKg: 20 } },
+    { code: 'TPM', name: 'Tracked 24 with signature', tracked: true, signature: true, maxTransitDays: 1, domestic: true },
+    { code: 'TPL', name: 'Tracked 48 with signature', tracked: true, signature: true, maxTransitDays: 2, domestic: true },
+    { code: 'SD1', name: 'Special Delivery Guaranteed by 1pm', tracked: true, signature: true, express: true, maxTransitDays: 1, domestic: true },
+    { code: 'CRL1', name: '1st Class (untracked)', tracked: false, maxTransitDays: 1, domestic: true, limits: { maxWeightKg: 20 } },
+    { code: 'CRL2', name: '2nd Class (untracked)', tracked: false, maxTransitDays: 3, domestic: true, limits: { maxWeightKg: 20 } },
+    { code: 'BPL1', name: '1st Class Large Letter', tracked: false, maxTransitDays: 1, domestic: true, limits: { maxWeightKg: 0.75, maxThinnestCm: 2.5 } },
+    { code: 'BPL2', name: '2nd Class Large Letter', tracked: false, maxTransitDays: 3, domestic: true, limits: { maxWeightKg: 0.75, maxThinnestCm: 2.5 } },
+    { code: 'MTA', name: 'International Tracked', tracked: true, maxTransitDays: 7, international: true },
+    { code: 'MTB', name: 'International Tracked & Signed', tracked: true, signature: true, maxTransitDays: 7, international: true },
+    { code: 'OLA', name: 'International Standard (untracked)', tracked: false, maxTransitDays: 10, international: true },
+  ],
+  definition: {
+    version: 1,
+    baseUrl: 'https://api.parcel.royalmail.com/api/v1',
+    timeoutMs: 30_000,
+    rateLimitPerMinute: 300,
+    auth: { kind: 'header', header: 'Authorization', value: '{{ cred.apiKey }}' },
+    accountFields: [],
+    notes: 'Click & Drop accepts up to 2,000 orders per call at 5 calls a second. Labels come back inline as base64 PDF when includeLabelInResponse is true. VERIFY at first test: countryCode format (alpha-2 assumed) and the service codes for your account (Click & Drop → Settings → Shipping services).',
+    operations: {
+      auth_test: { method: 'GET', path: '/version', responseType: 'json' },
+      create_shipment: {
+        method: 'POST',
+        path: '/orders',
+        body: {
+          items: [
+            {
+              orderReference: '{{ shipment.reference }}',
+              recipient: {
+                address: {
+                  fullName: '{{ order.contactName | truncate:210 }}',
+                  'companyName?': '{{ order.company | truncate:100 }}',
+                  addressLine1: '{{ order.line1 | truncate:100 }}',
+                  'addressLine2?': '{{ order.line2 | truncate:100 }}',
+                  city: '{{ order.city | truncate:100 }}',
+                  'county?': '{{ order.region | truncate:100 }}',
+                  postcode: '{{ order.postCode | truncate:20 }}',
+                  countryCode: '{{ order.country }}',
+                },
+                'phoneNumber?': '{{ order.phone | truncate:25 }}',
+                'emailAddress?': '{{ order.email | truncate:254 }}',
+              },
+              sender: {
+                'tradingName?': '{{ warehouse.company | truncate:250 }}',
+                'phoneNumber?': '{{ warehouse.phone | truncate:25 }}',
+                'emailAddress?': '{{ warehouse.email | truncate:254 }}',
+              },
+              packages: {
+                $map: 'parcels',
+                as: 'p',
+                item: {
+                  weightInGrams: '{{ p.weightKg | grams }}',
+                  packageFormatIdentifier: 'parcel',
+                  dimensions: { heightInMms: '{{ p.heightCm | mm }}', widthInMms: '{{ p.widthCm | mm }}', depthInMms: '{{ p.lengthCm | mm }}' },
+                  'contents?': {
+                    $includeIf: 'order.international',
+                    $map: 'order.lines',
+                    as: 'line',
+                    item: {
+                      name: '{{ line.customsDescription | default:line.name | truncate:255 }}',
+                      'SKU?': '{{ line.sku | truncate:100 }}',
+                      quantity: '{{ line.quantity | int }}',
+                      unitValue: '{{ line.unitValue | number }}',
+                      unitWeightInGrams: '{{ line.weightKg | grams }}',
+                      'customsCode?': '{{ line.hsCode }}',
+                      'originCountryCode?': '{{ line.countryOfOrigin }}',
+                    },
+                  },
+                },
+              },
+              orderDate: '{{ order.orderDate | date:YYYY-MM-DD }}T00:00:00Z',
+              subtotal: '{{ order.goodsValue | round:2 }}',
+              shippingCostCharged: 0,
+              total: '{{ order.goodsValue | round:2 }}',
+              currencyCode: '{{ order.currency }}',
+              postageDetails: {
+                sendNotificationsTo: 'recipient',
+                serviceCode: '{{ method.serviceCode }}',
+                'requestSignatureUponDelivery?': '{{ order.signature | bool }}',
+                'receiveEmailNotification?': '{{ order.email | bool }}',
+              },
+              label: { includeLabelInResponse: true, includeCN: '{{ order.international | bool }}', includeReturnsLabel: false },
+              'importerCustomsDetails?': {
+                $includeIf: 'order.international',
+                'eoriNumber?': '{{ warehouse.eori }}',
+                'preRegistrationNumber?': '{{ warehouse.iossNumber }}',
+                'preRegistrationType?': '{{ warehouse.iossNumber | bool | eq:true }}',
+              },
+            },
+          ],
+        },
+        successWhen: { path: 'createdOrders[0].orderIdentifier' },
+        errorPath: 'failedOrders[0].errors[0].errorMessage',
+        response: {
+          courierReference: 'createdOrders[0].orderIdentifier',
+          trackingNumber: 'createdOrders[0].trackingNumber',
+          labelBase64: 'createdOrders[0].label',
+        },
+      },
+      get_label: {
+        method: 'GET',
+        path: '/orders/{{ shipment.courierReference }}/label',
+        query: { documentType: 'postageLabel', includeReturnsLabel: 'false' },
+        responseType: 'binary',
+      },
+      void_shipment: {
+        method: 'DELETE',
+        path: '/orders/{{ shipment.courierReference }}',
+        successWhen: { path: 'deletedOrders[0]' },
+        errorPath: 'errors[0].errorMessage',
+      },
+      track: {
+        method: 'GET',
+        path: 'https://api.royalmail.net/mailpieces/v2/{{ shipment.trackingNumber }}/events',
+        headers: { 'X-IBM-Client-Id': '{{ cred.trackingClientId }}', 'X-IBM-Client-Secret': '{{ cred.trackingClientSecret }}', 'X-Accept-RMG-Terms': 'yes' },
+        responseType: 'json',
+        errorPath: 'errors[0].errorDescription',
+        response: {
+          events: 'mailPieces.events',
+          status: 'eventName',
+          time: 'eventDateTime',
+          location: 'locationName',
+          description: 'eventName',
+        },
+      },
+    },
+    label: { format: 'pdf', source: 'inline', nativeSize: '6x4' },
+    trackingUrlTemplate: 'https://www.royalmail.com/track-your-item#/tracking-results/{{ shipment.trackingNumber }}',
+    statusMap: [
+      { match: 'Item received*', status: 'SHIPPED' },
+      { match: 'Accepted at*', status: 'SHIPPED' },
+      { match: 'Collected*', status: 'SHIPPED' },
+      { match: 'Item despatched*', status: 'IN_TRANSIT' },
+      { match: 'Item leaving*', status: 'IN_TRANSIT' },
+      { match: 'Item at*', status: 'IN_TRANSIT' },
+      { match: 'In transit*', status: 'IN_TRANSIT' },
+      { match: 'Out for delivery*', status: 'IN_TRANSIT' },
+      { match: 'Delivered*', status: 'DELIVERED' },
+      { match: 'Delivery attempted*', status: 'PROBLEM', problem: 'delivery_failed' },
+      { match: 'Item returned*', status: 'PROBLEM', problem: 'returning' },
+      { match: 'Return to sender*', status: 'PROBLEM', problem: 'returning' },
+      { match: 're:customs|held|duty', status: 'PROBLEM', problem: 'held' },
+      { match: 're:damaged|lost', status: 'PROBLEM', problem: 'damaged_lost' },
+    ],
+    retryOn: [429, 502, 503, 504],
+  },
+};
