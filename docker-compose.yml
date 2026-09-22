@@ -1,0 +1,22 @@
+# Local development database for Smooth Parcel V4.
+# Port 5433 on the host so it can run beside other projects' Postgres.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-spv4}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spv4}
+      POSTGRES_DB: ${POSTGRES_DB:-spv4}
+    ports:
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - spv4_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U spv4 -d spv4']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+volumes:
+  spv4_pgdata:

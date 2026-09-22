@@ -1,0 +1,19 @@
+{
+  "name": "spv4",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "test": "turbo test",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "npm run db:generate -w @spv4/api",
+    "db:migrate": "npm run db:migrate -w @spv4/api"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": { "node": ">=22.0.0" },
+  "packageManager": "npm@11.9.0"
+}
