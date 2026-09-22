@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
-    "db:migrate:test": "cross-env-shell \"tsx scripts/migrate.ts --test\"",
+    "db:migrate:test": "tsx scripts/migrate.ts --test",
     "seed:dev": "tsx scripts/seed-dev.ts",
     "create-admin": "tsx scripts/create-admin.ts"
   },

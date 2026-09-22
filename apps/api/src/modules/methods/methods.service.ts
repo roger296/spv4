@@ -146,7 +146,7 @@ export class MethodsService {
 
   async bandHistory(ctx: Ctx, id: string) {
     await this.get(ctx, id);
-    return this.db.select().from(shippingMethodBands).where(eq(shippingMethodBands.methodId, id)).orderBy(desc(shippingMethodBands.effectiveFrom), asc(shippingMethodBands.minWeightKg));
+    return this.db.select().from(shippingMethodBands).where(eq(shippingMethodBands.methodId, id)).orderBy(desc(shippingMethodBands.effectiveFrom), desc(shippingMethodBands.createdAt), asc(shippingMethodBands.minWeightKg));
   }
 
   /** Append-only: a new band set with its own effective date. Never overwrites history. */

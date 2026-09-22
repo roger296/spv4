@@ -38,6 +38,27 @@ npm test -w @spv4/api    # unit + integration against the spv4_test database
 Tests never touch the dev database: `apps/api/test/setup.ts` points `DATABASE_URL` at
 `TEST_DATABASE_URL` (default `spv4_test`).
 
+## What is where
+
+| Area | Path |
+| --- | --- |
+| Order intake, pre-flight check, orders API | `apps/api/src/modules/orders/` |
+| Connector engine, templates, profile schema | `apps/api/src/couriers/` (built-in Royal Mail and DPD in `builtin/`) |
+| Courier profiles and accounts API | `apps/api/src/modules/couriers/` |
+| Shipping methods and cost bands | `apps/api/src/modules/methods/` |
+| Method selection, label purchase, PDFs | `apps/api/src/modules/labels/` |
+| Tracking poll, exception rules, problems, public tracking page | `apps/api/src/modules/tracking/` |
+| MCP server and OAuth for Claude Cowork | `apps/api/src/mcp/` (served at `/mcp`) |
+| AI jobs: profile drafting, problem triage, product data, invoice reconciliation | `apps/api/src/modules/ai/` |
+| Mollie subscriptions | `apps/api/src/modules/billing/` |
+| Platform admin API | `apps/api/src/modules/admin/` |
+| Worker jobs (pg-boss) | `apps/api/src/worker/` |
+| Deployment (Coolify) | `infra/coolify/docker-compose.yml`, `docs/DEPLOY.md` |
+
+Dev seed: `npm run seed:dev -w @spv4/api` creates `dev@example.test` / `dev-password-1` with a warehouse,
+products and a Royal Mail courier account with placeholder credentials. Platform admin:
+`npx tsx apps/api/scripts/create-admin.ts --email … --name … --password …`.
+
 ## Conventions
 
 - British English in UI copy; Conventional Commits; one commit per feature.
