@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
+import formbody from '@fastify/formbody';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { getEnv } from './config/env.js';
@@ -23,6 +24,7 @@ export async function buildApp() {
   });
 
   await app.register(cors, { origin: true, methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'] });
+  await app.register(formbody);
   await app.register(jwt, { secret: env.JWT_SECRET });
   await app.register(rateLimit, { global: true, max: 600, timeWindow: '1 minute' });
   await app.register(swagger, {

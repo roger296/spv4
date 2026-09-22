@@ -13,6 +13,7 @@ export interface FakeState {
   logins: number;
   failNextCreate: { status: number; message: string } | null;
   trackingEvents: Record<string, { status: string; time: string; location?: string }[]>;
+  webhooks: { headers: Record<string, unknown>; body: unknown }[];
 }
 
 async function labelPdf(text: string): Promise<string> {
@@ -24,7 +25,7 @@ async function labelPdf(text: string): Promise<string> {
 }
 
 export async function startFakeCourier(): Promise<{ app: FastifyInstance; url: string; state: FakeState }> {
-  const state: FakeState = { created: [], voided: [], labelFetches: 0, logins: 0, failNextCreate: null, trackingEvents: {} };
+  const state: FakeState = { created: [], voided: [], labelFetches: 0, logins: 0, failNextCreate: null, trackingEvents: {}, webhooks: [] };
   const app = Fastify({ logger: false });
   let seq = 1000;
 
@@ -79,6 +80,9 @@ export async function startFakeCourier(): Promise<{ app: FastifyInstance; url: s
     const code = (req.query as { parcelCode: string }).parcelCode;
     return { data: { trackingEvent: (state.trackingEvents[code] ?? []).map((e) => ({ trackingEventStatus: e.status, trackingEventDate: e.time, trackingEventLocation: e.location ?? '' })) }, error: null };
   });
+
+  // A webhook receiver for Smooth Parcel's own outbound webhooks.
+  app.post('/hooks', async (req) => { state.webhooks.push({ headers: req.headers as Record<string, unknown>, body: req.body }); return { ok: true }; });
 
   await app.listen({ port: 0, host: '127.0.0.1' });
   const address = app.server.address();

@@ -137,7 +137,7 @@ export const dpdUk: BuiltinProfile = {
     trackingUrlTemplate: 'https://track.dpd.co.uk/parcels/{{ shipment.trackingNumber }}',
     statusMap: [
       { match: 're:collected|received at|we have your parcel', status: 'SHIPPED' },
-      { match: 're:in transit|at depot|sorted|on its way|out for delivery|driver', status: 'IN_TRANSIT' },
+      { match: 're:in transit|depot|hub|sorted|on its way|out for delivery|driver|loaded|arrived', status: 'IN_TRANSIT' },
       { match: 're:delivered', status: 'DELIVERED' },
       { match: 're:unable to deliver|not delivered|carded|attempted|refused|address query', status: 'PROBLEM', problem: 'delivery_failed' },
       { match: 're:return|back to sender', status: 'PROBLEM', problem: 'returning' },
