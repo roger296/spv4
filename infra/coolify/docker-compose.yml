@@ -1,0 +1,100 @@
+# Smooth Parcel V4 on Coolify (Docker Compose resource).
+# Point Coolify at this file (Build pack: Docker Compose, base directory /, compose file infra/coolify/docker-compose.yml).
+# Set the secrets in Coolify's environment tab; Coolify keeps the first-deployed defaults for ${VAR:-default}.
+# Domains: api → API_DOMAIN (port 3100), web → WEB_DOMAIN (port 80). The MCP server and the
+# public tracking page are served by the API (https://<api>/mcp, https://<api>/v4/track/...).
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-spv4}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-spv4}
+    volumes:
+      - spv4_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-spv4} -d ${POSTGRES_DB:-spv4}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3100
+      HOST: 0.0.0.0
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-spv4}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-spv4}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY}
+      DOCUMENTS_DIR: /app/documents
+      APP_ORIGIN: https://${WEB_DOMAIN:?set WEB_DOMAIN}
+      API_ORIGIN: https://${API_DOMAIN:?set API_DOMAIN}
+      TRACK_ORIGIN: https://${API_DOMAIN}/v4/track
+      MOLLIE_API_KEY: ${MOLLIE_API_KEY:-}
+      MOLLIE_WEBHOOK_URL: https://${API_DOMAIN}/v4/billing/webhook
+      SUBSCRIPTION_WEEKLY_AMOUNT_GBP: ${SUBSCRIPTION_WEEKLY_AMOUNT_GBP:-15.00}
+      TRIAL_DAYS: ${TRIAL_DAYS:-14}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5}
+      AI_DAILY_BUDGET_GBP: ${AI_DAILY_BUDGET_GBP:-5}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-Smooth Parcel <no-reply@smoothparcel.com>}
+      TRACKING_POLL_CRON: ${TRACKING_POLL_CRON:-15 */4 * * *}
+      DOCUMENT_RETENTION_DAYS: ${DOCUMENT_RETENTION_DAYS:-548}
+    volumes:
+      - spv4_documents:/app/documents
+    ports:
+      - '3100'
+    labels:
+      - coolify.managed=true
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ['npx', 'tsx', 'src/worker/index.ts']
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-spv4}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-spv4}
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      DOCUMENTS_DIR: /app/documents
+      APP_ORIGIN: https://${WEB_DOMAIN}
+      API_ORIGIN: https://${API_DOMAIN}
+      MOLLIE_API_KEY: ${MOLLIE_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-Smooth Parcel <no-reply@smoothparcel.com>}
+      TRACKING_POLL_CRON: ${TRACKING_POLL_CRON:-15 */4 * * *}
+      DOCUMENT_RETENTION_DAYS: ${DOCUMENT_RETENTION_DAYS:-548}
+    volumes:
+      - spv4_documents:/app/documents
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_ORIGIN: https://${API_DOMAIN}
+        VITE_MCP_ORIGIN: https://${API_DOMAIN}/mcp
+    restart: unless-stopped
+    ports:
+      - '80'
+
+volumes:
+  spv4_pgdata:
+  spv4_documents:
